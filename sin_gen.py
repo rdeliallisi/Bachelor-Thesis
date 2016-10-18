@@ -4,7 +4,7 @@ import scipy.linalg;
 from math import sin;
 
 # Input, reservoir, output size
-res_size = 50;
+res_size = 20;
 in_size = 0;
 out_size = 1;
 
@@ -14,8 +14,8 @@ train_size = 300;
 washout_size = 100;
 
 # Scaling parameters
-w_scale = 1.16;
-w_back_scale = 0.8;
+w_scale = 0.98;
+w_back_scale = 1.01;
 bias_scale = 0;
 reg = 1e-7;
 
