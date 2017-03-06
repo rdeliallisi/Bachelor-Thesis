@@ -1,0 +1,24 @@
+function d2 = mccenterxyFrames(d)
+% Translates motion capture data to have a centroid of [0 0] in x,y across markers per frame.
+%
+% syntax
+% d2 = mccenter(d);
+%
+% input parameters
+% d: MoCap structure or data matrix
+%
+% output
+% d2: MoCap structure or data matrix
+%
+% comments
+% Missing data (NaN's) is ignored when calculating the centroid.
+%
+% © Part of the Motion Capture Toolbox, Copyright ©2008, 
+% University of Jyvaskyla, Finland
+
+d2=[];
+
+    x = mean(mcmean(d.data(:,1:3:end)));
+    y = mean(mcmean(d.data(:,2:3:end)));
+    z = mean(mcmean(d.data(:,3:3:end)));
+    d2 = mctranslate(d, [-x -y -z]);

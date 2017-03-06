@@ -90,7 +90,7 @@ plot(m(:,1:5));
 subplot(3,1,2);
 plot(internal_testing(:,1:5));
 subplot(3,1,3);
-p = plot(1:test_size, y(1,:), 'c', 1:test_size, d(1, train_size + 1:train_size + test_size), 'r--');
+p = plot(1:test_size, y(3,:), 'c', 1:test_size, d(3, train_size + 1:train_size + test_size), 'r--');
 p(1).LineWidth = 4;
 xlabel('Time[time units]');
 ylabel('Signal[signal units]');
