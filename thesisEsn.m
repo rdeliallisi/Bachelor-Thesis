@@ -1,7 +1,8 @@
 clear all;
 clc;
 
-rand('seed', 14);
+rng('default');
+rng(14);
 
 addpath('./data');
 addpath('./helpers');
@@ -10,7 +11,7 @@ addpath('./MoCapToolbox_v1.4/mocaptoolbox');
 % Script config variables
 plots = 1;
 % The plots of which pattern to show
-patternNumber = 14;
+patternNumber = 10;
 showVideo = 0;
 
 % Pattern constants
@@ -96,7 +97,7 @@ bias_scale = 0.3;
 reg = 1e-2;
 
 % Leaking rate
-a = 0.6;
+a = 0.5;
 
 % Scale internal weights w
 w_0 = 2 * rand(res_size, res_size) - 1;
@@ -165,7 +166,7 @@ for iteration = 1:nP
 end;
 
 totalTrainNrmse = mean(trainNrmses)
-maxMeanAbs = max(meanAbs)
+maxMeanAbs = mean(meanAbs)
 
 % Generate 1000 test points for each pattern
 simpleTestData = zeros(pattDim, test_size, nP);
@@ -193,17 +194,15 @@ for iteration = 1:nP
     testNrmses(iteration) = mean(pNrmse(not(isnan(pNrmse)),1));
 end;
 
-totalTestNrmse = mean(testNrmses)
-figure(4);
-plot(testNrmses);
-
+    totalTestNrmse = mean(testNrmses)
+    
 if plots == 1
     % Produce plots for the specified pattern
     internalLen = size(internalTraining{patternNumber}, 1);
     thisPatt = patts{patternNumber}';
     pattLen = size(thisPatt, 2);
     
-    figure();
+    figure(1);
     subplot(3,1,1);
     plot(internalTraining{patternNumber});
     subplot(3,1,2);
@@ -211,17 +210,21 @@ if plots == 1
     subplot(3,1,3);
     plot(internalTraining{patternNumber} - internalTesting(1:internalLen,:,patternNumber));
     
-    figure();
+    figure(2);
     for i=1:pattDim
         subplot(8, 8, i);
         plot(thisPatt(i,:), 'r');
     end;
     
-    figure();
+    figure(3);
     for i=1:pattDim
         subplot(8, 8, i);
         plot(simpleTestData(i,1:pattLen,patternNumber), 'b');
     end;
+    
+    
+    figure(4);
+    plot(testNrmses);
     
 end;
 
