@@ -12,22 +12,21 @@ addpath('./MoCapToolbox_v1.4/mocaptoolbox');
 % Script config variables
 plots = 1;
 % The plots of which pattern to show
-patternNumber = 1;
 showVideo = 0;
 
 % Pattern constants
-nP = 15;
+nP = 3;
 pattDim = 61;
 
-%%% Number of motion patterns
+% Number of motion patterns
 % 1 ExaggeratedStride 2 SlowWalk 3 Walk 4 RunJog 5 CartWheel  6 Waltz
 % 7 Crawl  8 Standup  9 Getdown 10 Sitting  11 GetSeated  12 StandupFromStool
 % 13 Box1  14 Box2 15 Box3
 
 % Setting sequence order of patterns to be displayed
-pattOrder = [10 12 2 1 4 1 6 3 9 7 8 3 13 15 14 2 5 3 2 11 ];
+pattOrder = [10 12 2 1 4 1 6 3 9 7 8 3 13 15 14 2  5 3 2 11 ];
 % Setting durations of each pattern episode (note: 120 frames = 1 sec)
-pattDurations = [ 150 260 240 200 250 130 630 200 120 400 100 100 ...
+pattDurations = [ 150 260 200 200 250 130 630 200 120 400 100 100  ...
     250 400 300 150 670 100 150 300 ];
 % Setting durations for morphing transitions between two subsequent patterns
 pattTransitions = 120 * ones(1, length(pattOrder)-1);
@@ -52,7 +51,7 @@ p13 = nnRawDataBox1;  p14 = nnRawDataBox2; p15 = nnRawDataBox3;
 % GetSeated data
 segmentlengths = segLengthsGetSeated;
 
-% set default height of center of gravity to mean of some of the traces
+% set default height of centx   er of gravity to mean of some of the traces
 % (needed to place visualized stick guy in a reasonably looking height
 % above ground)
 hmean = mean([hmeanExaStride, hmeanSlowWalk, ...
@@ -84,21 +83,20 @@ for i = 1:nP
 end;
 
 % Apertures
-alphas = 100 * ones(1,nP);
-alphas(2) = 3;
-alphas(13) = 20;
+alphas = 5 * ones(1,nP);
 
 % Input, reservoir, output dimensions
-res_size = 600;
-expand_size = 3000;
+res_size = 1000;
+expand_size = 10000;
 in_dim = pattDim;
 out_dim = pattDim;
 
-% Training/testing/washout size
-test_size = 700;
+% Testing/washout size
+test_size = max(pattLengths(1:nP));
+washout_size = 50;
 
 % Scaling parameters
-gf_scale = 0.5;
+gf_scale = 1.6;
 w_in_scale = 1;
 bias_scale = 0.3;
 
@@ -129,78 +127,94 @@ w_in = w_in_scale .* w_in;
 bias = 2 * rand(res_size, 1) - 1;
 bias = bias_scale .* bias;
 
-% Containers for training
-d_z = [];
-d_p = [];
-w_r = [];
-w_p = [];
-start_r = [];
-start_z = [];
+%% Containers for training
+d_z = zeros(expand_size, sum(pattLengths) - nP * washout_size);
+d_p = zeros(res_size, sum(pattLengths) - nP * washout_size);
+w_r = zeros(res_size, sum(pattLengths) - nP * washout_size);
+w_p = zeros(in_dim, sum(pattLengths) - nP * washout_size);
+counter = 1;
+start_r = zeros(res_size, nP);
+start_z = zeros(expand_size, nP);
 internalTraining = cell(1, nP);
+internalTrainingExt = cell(1, nP);
 c = cell(1, nP);
 % Initialize reservoir state and expanded state
 r = zeros(res_size, 1);
 z = zeros(expand_size, 1);
 
 for iteration = 1:nP
+    fprintf('Iteration Train: %d\n', iteration);
     % Get the next pattern
     p = patts{iteration}';
     % Remove 5 and 17 channel for they are only noise
     p([5 17], :) = zeros(2,pattLengths(iteration));
     
-    % Training, testing and washout data size
+    % Training data size
     train_size = pattLengths(iteration);
-    washout_size = 50;
     
     % Conceptor data for single pattenr
-    c_z = [];
+    c_z = zeros(expand_size, train_size);
+    patternTraining = zeros(train_size - washout_size,10);
+    patternTrainingExt = zeros(train_size - washout_size, 10);
     for i = 1:train_size
         r_old = r;
         u = p(:, i);
         r = (1-a) * r + a * tanh(g * z + w_in * u + bias);
         z = f * r;
         if i == washout_size
-            start_r = [start_r r];
-            start_z = [start_z z];
+            start_r(:, iteration) = r;
+            start_z(:, iteration) = z;
         end;
         if i > washout_size
-            d_z = [d_z z_old];
-            d_p = [d_p (w_in * u)];
-            w_r = [w_r r_old];
-            w_p = [w_p u];
-            c_z = [c_z z];
-            internalTraining{iteration} = [internalTraining{iteration}; r(1:10,:)'];
+            d_z(:, counter)  = z_old;
+            d_p(:, counter) = (w_in * u);
+            w_r(:, counter) = r_old;
+            w_p(:, counter) = u;
+            c_z(:, i - washout_size) = z;
+            patternTraining(i - washout_size, :) = r(1:10)';
+            patternTrainingExt(i - washout_size, :) = z(1:10)';
+            counter = counter + 1;
         end;
+        
         z_old = z;
     end;
     
+    internalTraining{iteration} = patternTraining;
+    internalTrainingExt{iteration} = patternTrainingExt;
     % Compute random feature conceptor of pattern
     z_square = c_z.^2;
     square_mean = mean(z_square, 2);
     c{iteration} = square_mean .* (square_mean + alphas(iteration)^-2).^-1;
 end;
 
-% Compute d using ridge regression
-d = inv(d_z * d_z' + reg * eye(expand_size)) * d_z * d_p';
+%% Compute d using ridge regression
+d = (d_z * d_z' + reg * eye(expand_size)) \ d_z * d_p';
 d = d';
 
 mean_abs_d = mean(mean(abs(d)));
 vec_nrmse_d = nrmse(d * d_z, d_p);
 nrmse_d = mean(vec_nrmse_d(not(isnan(vec_nrmse_d)),1));
+fprintf('mean NRMSE D: %g   mean abs D: %g\n', ...
+    nrmse_d, mean_abs_d);
 
-% Compute w_out using ridge regression
-w_out = inv(w_r * w_r' + reg * eye(res_size)) * w_r * w_p';
+%% Compute w_out using ridge regression
+w_out = (w_r * w_r' + reg * eye(res_size)) \ w_r * w_p';
 w_out = w_out';
 
-mean_abss_w_out = mean(mean(abs(w_out)));
+mean_abs_w_out = mean(mean(abs(w_out)));
 vec_nrmse_w_out = nrmse(w_out * w_r, w_p);
 nrmse_w_out = mean(vec_nrmse_w_out(not(isnan(vec_nrmse_w_out)),1));
 
-% Generate test_size test points for each pattern
+fprintf('mean NRMSE Wout: %g   mean abs Wout: %g\n', ...
+    nrmse_w_out, mean_abs_w_out);
+
+%% Generate test_size test points for each pattern
 simpleTestData = zeros(pattDim, test_size, nP);
 internalTesting = zeros(test_size, 10, nP);
+internalTestingExt = zeros(test_size, 10, nP);
 
 for iteration = 1:nP
+    fprintf('Iteration Test: %d\n', iteration);
     r = start_r(:, iteration);
     z = start_z(:, iteration);
     
@@ -210,34 +224,171 @@ for iteration = 1:nP
         z = c{iteration} .* (f * r);
         
         internalTesting(i,:,iteration) = r(1:10)';
+        internalTestingExt(i,:,iteration) = z(1:10)';
         simpleTestData(:,i,iteration) = o;
     end;
 end;
 
+%% Plots
 if plots == 1
-    % Produce plots for the specified pattern
+    %% Pattern to be plotted
+    patternNumber = 3;
+    %% Set ploting length by looking at training data available
     internalLen = size(internalTraining{patternNumber}, 1);
     thisPatt = patts{patternNumber}';
     pattLen = size(thisPatt, 2);
     
+    %% Internal States
     figure();
     subplot(3,1,1);
     plot(internalTraining{patternNumber});
     subplot(3,1,2);
     plot(internalTesting(1:internalLen,:,patternNumber));
     subplot(3,1,3);
-    plot(internalTraining{patternNumber} - internalTesting(1:internalLen,:,patternNumber));
+    plot(log(abs(internalTraining{patternNumber} - internalTesting(1:internalLen,:,patternNumber))));
     
+    %% Expansion State
+    figure();
+    subplot(3,1,1);
+    plot(internalTrainingExt{patternNumber});
+    subplot(3,1,2);
+    plot(internalTestingExt(1:internalLen,:,patternNumber));
+    subplot(3,1,3);
+    plot(log(abs(internalTrainingExt{patternNumber} - internalTestingExt(1:internalLen,:,patternNumber))));
+    
+    %% Original Pattern
     figure();
     for i=1:pattDim
         subplot(8, 8, i);
         plot(thisPatt(i,:), 'r');
     end;
     
+    %% Generated Pattern
     figure();
     for i=1:pattDim
         subplot(8, 8, i);
         plot(simpleTestData(i,1:pattLen,patternNumber), 'b');
     end;
     
+    %% RFCs
+    figure();
+    plot(1:expand_size, sort(c{patternNumber}), 'o');
 end;
+
+%% Show stick figure video
+if showVideo == 1
+    % Create morph sequence data
+    L = sum(pattDurations) + sum(pattTransitions);
+    mus = zeros(nP,L);
+    
+    for window = 1:length(pattOrder)
+        if window == 1 % no transition
+            mus(pattOrder(1),1:pattDurations(1)) = ...
+                ones(1,pattDurations(1));
+            startT = pattDurations(1) + 1;
+        else
+            % start with transition
+            mus(pattOrder(window-1),...
+                startT:startT+pattTransitions(window-1)-1) = ...
+                (pattTransitions(window-1):-1:1) / pattTransitions(window-1);
+            mus(pattOrder(window),...
+                startT:startT+pattTransitions(window-1)-1) = ...
+                (1:pattTransitions(window-1)) / pattTransitions(window-1);
+            startT = startT + pattTransitions(window-1);
+            mus(pattOrder(window),...
+                startT:startT+pattDurations(window)-1) = ...
+                ones(1,pattDurations(window));
+            startT = startT + pattDurations(window);
+        end
+    end
+    mus  = smoothmus( mus );
+    
+    morphData = zeros(pattDim, L);
+    
+    r = start_r(:, pattOrder(1));
+    z = start_z(:, pattOrder(1));
+    for n = 1:L
+        r = (1-a) * r + a * tanh(g * z + d * z + bias);
+        
+        % find which mu indices are not 0
+        thismu = mus(:,n);
+        allInds = (1:nP)';
+        muNot0Inds = allInds(thismu ~= 0);
+        
+        if length(muNot0Inds) == 1
+            thisC = c{muNot0Inds};
+        else
+            thisC = thismu(muNot0Inds(1)) * c{muNot0Inds(1)} + ...
+                thismu(muNot0Inds(2)) * c{muNot0Inds(2)};
+        end;
+        
+        o = w_out * r;
+        morphData(:,n) = o;
+        z = thisC .* (f * r);
+    end;
+    
+    j2spar.type = 'j2spar';
+    j2spar.rootMarker = 1;
+    j2spar.frontalPlane = [6 10 2 ];  % be careful about order
+    j2spar.parent = [0 1 2 3 4 1 6 7 8 1 10 11 11 13 14 15 11 17 18 19];
+    j2spar.segmentName = cell(1,19);
+    
+    nnOutnorm = morphData';
+    
+    nnRawDataRecovered = ...
+        nnOutnorm * diag(1 ./ scalings) - ...
+        repmat(shifts, size(nnOutnorm,1), 1);
+    
+    freq = 120;
+    
+    djrecovered = ...
+        nnRaw2jHJ_absH(nnRawDataRecovered, hmean, segmentlengths, ...
+        j2spar, freq);
+    
+    djrecovered.mus = mus;
+    
+    japarVideo.showmnum = 0;
+    japarVideo.animate = 1;
+    japarVideo.colors = 'wkkkk';
+    japarVideo.trl = 0;
+    japarVideo.numbers = [];
+    japarVideo.cwidth = 5;
+    japarVideo.twidth = 1;
+    japarVideo.az = 20;
+    japarVideo.el = 20;
+    japarVideo.fps = 30;
+    japarVideo.limits = [];
+    japarVideo.scrsize = [400 350];
+    japarVideo.showfnum = 0;
+    japarVideo.conn2 = [];
+    japarVideo.conn = [11 12; 13 11; 11 17; 13 14; 14 15; 15 16;...
+        17 18; 18 19; 19 20; 10 11; 1 10; 1 2; 1 6; 2 3; 3 4; 4 5;...
+        6 7; 7 8; 8 9];
+    japarVideo.msize = 12;
+    japarVideo.fontsize = 12;
+    japarVideo.folder = '0'; % set to string '0' if no save is wanted, else
+    % give a name for a folder where frame png
+    % files are to be stored
+    japarVideo.center = 1;
+    japarVideo.pers.c = [0 -10000 0];
+    japarVideo.pers.th = [0 0 0];
+    japarVideo.pers.e = [0 -6000 0];
+    japarVideo.nGridlines = 5;
+    japarVideo.botWidth = 5000;
+    
+    japarVideo.fignr = 11;
+    djrecoveredResampled = mcresampleHJ(djrecovered, japarVideo.fps);
+    xRootShifts = djrecoveredResampled.data(2:end,1) - ...
+        djrecoveredResampled.data(1:end-1,1);
+    yRootShifts = djrecoveredResampled.data(2:end,2) - ...
+        djrecoveredResampled.data(1:end-1,2);
+    
+    djrecoveredCentered = mccenterxyFrames(djrecovered);
+    djrecoveredCenteredResampled = ...
+        mcresampleHJ(djrecoveredCentered, japarVideo.fps);
+    
+    mcanimateHJ(djrecoveredCenteredResampled, japarVideo, 1,...
+        xRootShifts, yRootShifts);
+end;
+
+

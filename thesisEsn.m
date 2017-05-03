@@ -8,25 +8,25 @@ addpath('./data');
 addpath('./helpers');
 addpath('./MoCapToolbox_v1.4/mocaptoolbox');
 
-% Script config variables
-plots = 1;
-% The plots of which pattern to show
-patternNumber = 10;
+set(0,'DefaultFigureWindowStyle','docked');
+
+%% Script config variables
+plots = 0;
 showVideo = 0;
 
-% Pattern constants
+%% Pattern constants
 nP = 15;
 pattDim = 61;
 
-%%% Number of motion patterns
+% Number of motion patterns
 % 1 ExaggeratedStride 2 SlowWalk 3 Walk 4 RunJog 5 CartWheel  6 Waltz
 % 7 Crawl  8 Standup  9 Getdown 10 Sitting  11 GetSeated  12 StandupFromStool
 % 13 Box1  14 Box2 15 Box3
 
 % Setting sequence order of patterns to be displayed
-pattOrder = [10 12 2 1 4 1 6 3 9 7 8 3 13 15 14 2 5 3 2 11 ];
+pattOrder = [10 12 2 1 4 1 6 3 9 7 8 3 13 15 14 2  5 3 2 11 ];
 % Setting durations of each pattern episode (note: 120 frames = 1 sec)
-pattDurations = [ 150 260 240 200 250 130 630 200 120 400 100 100 ...
+pattDurations = [ 150 260 200 200 250 130 630 200 120 400 100 100  ...
     250 400 300 150 670 100 150 300 ];
 % Setting durations for morphing transitions between two subsequent patterns
 pattTransitions = 120 * ones(1, length(pattOrder)-1);
@@ -51,7 +51,7 @@ p13 = nnRawDataBox1;  p14 = nnRawDataBox2; p15 = nnRawDataBox3;
 % GetSeated data
 segmentlengths = segLengthsGetSeated;
 
-% set default height of center of gravity to mean of some of the traces
+% set default height of centx   er of gravity to mean of some of the traces
 % (needed to place visualized stick guy in a reasonably looking height
 % above ground)
 hmean = mean([hmeanExaStride, hmeanSlowWalk, ...
@@ -82,8 +82,9 @@ for i = 1:nP
     startInd = startInd + pattLengths(i);
 end;
 
-% Fixed testing size
+% Fixed testing and washout size
 test_size = 1000;
+washout_size = 50;
 
 % Input, reservoir, output size
 res_size = 1000;
@@ -91,13 +92,13 @@ in_size = 0;
 out_size = pattDim;
 
 % Scaling parameters
-w_scale = 1.6;
+w_scale = 1;
 w_back_scale = 1;
-bias_scale = 0.3;
-reg = 1e-2;
+bias_scale = 0.8;
+reg = 0.5;
 
 % Leaking rate
-a = 0.5;
+a = 0.6;
 
 % Scale internal weights w
 w_0 = 2 * rand(res_size, res_size) - 1;
@@ -127,9 +128,8 @@ for iteration = 1:nP
     % Remove 5 and 17 channel for they are only noise
     d([5 17], :) = zeros(2,pattLengths(iteration));
     
-    % Training, testing and washout data size
+    % Training data size
     train_size = pattLengths(iteration);
-    washout_size = 50;
     
     % Internal state collector m and teacher collector t
     m = zeros(train_size - washout_size, res_size);
@@ -154,8 +154,8 @@ for iteration = 1:nP
     nonWashedOutput{iteration} = t;
     
     % Compute output weights
-    wOut = (inv((m' * m) + reg .* eye(res_size)) ...
-        * m' * t);
+    wOut = ((m' * m) + reg .* eye(res_size)) ...
+        \ m' * t;
     outputWeights{iteration} = wOut;
     
     % Compute mean_abs and mse_train
@@ -168,10 +168,9 @@ end;
 totalTrainNrmse = mean(trainNrmses)
 maxMeanAbs = mean(meanAbs)
 
-% Generate 1000 test points for each pattern
+% Generate test points for each pattern
 simpleTestData = zeros(pattDim, test_size, nP);
 internalTesting = zeros(test_size, 10, nP);
-testNrmses = zeros(1, nP);
 
 for iteration = 1:nP
     wOut = outputWeights{iteration};
@@ -185,50 +184,45 @@ for iteration = 1:nP
         internalTesting(i,:,iteration) = x(1:10)';
         simpleTestData(:,i,iteration) = o;
     end;
-    
-    % Compute testing NRMSE
-    target = nonWashedOutput{iteration};
-    targetSize = size(target, 1);
-    pNrmse = nrmse(simpleTestData(:,1:targetSize,iteration), ...
-        target');
-    testNrmses(iteration) = mean(pNrmse(not(isnan(pNrmse)),1));
 end;
-
-    totalTestNrmse = mean(testNrmses)
-    
+ 
+%% Plots
 if plots == 1
-    % Produce plots for the specified pattern
+    % The plots of which pattern to show
+    patternNumber = 4;
+    
     internalLen = size(internalTraining{patternNumber}, 1);
     thisPatt = patts{patternNumber}';
     pattLen = size(thisPatt, 2);
     
-    figure(1);
+    figure('units','normalized','position',[.1 .1 .8 .4]);
     subplot(3,1,1);
     plot(internalTraining{patternNumber});
+    xlabel('Time[time units]');
+    ylabel('Signal[signal units]');
     subplot(3,1,2);
     plot(internalTesting(1:internalLen,:,patternNumber));
+    xlabel('Time[time units]');
+    ylabel('Signal[signal units]');
     subplot(3,1,3);
     plot(internalTraining{patternNumber} - internalTesting(1:internalLen,:,patternNumber));
+    xlabel('Time[time units]');
+    ylabel('Signal[signal units]');
     
     figure(2);
     for i=1:pattDim
         subplot(8, 8, i);
-        plot(thisPatt(i,:), 'r');
+        plot(thisPatt(i,:), 'b');
     end;
     
     figure(3);
     for i=1:pattDim
         subplot(8, 8, i);
-        plot(simpleTestData(i,1:pattLen,patternNumber), 'b');
+        plot(simpleTestData(i,:,patternNumber), 'b');
     end;
-    
-    
-    figure(4);
-    plot(testNrmses);
-    
 end;
 
-% Show stick figure video
+%% Show stick figure video
 if showVideo == 1
     % Create morph sequence data
     L = sum(pattDurations) + sum(pattTransitions);
@@ -310,7 +304,6 @@ if showVideo == 1
     japarVideo.fps = 30;
     japarVideo.limits = [];
     japarVideo.scrsize = [400 350];
-    %japarVideo.scrsize = [400 300];
     japarVideo.showfnum = 0;
     japarVideo.conn2 = [];
     japarVideo.conn = [11 12; 13 11; 11 17; 13 14; 14 15; 15 16;...
@@ -342,4 +335,3 @@ if showVideo == 1
     mcanimateHJ(djrecoveredCenteredResampled, japarVideo, 1,...
         xRootShifts, yRootShifts);
 end;
-
