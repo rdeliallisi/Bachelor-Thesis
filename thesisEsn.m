@@ -87,15 +87,15 @@ test_size = 1000;
 washout_size = 50;
 
 % Input, reservoir, output size
-res_size = 1000;
+res_size = 2000;
 in_size = 0;
 out_size = pattDim;
 
 % Scaling parameters
 w_scale = 1;
 w_back_scale = 1;
-bias_scale = 0.8;
-reg = 0.5;
+bias_scale = 0.3;
+reg = 0.1;
 
 % Leaking rate
 a = 0.6;
@@ -168,34 +168,46 @@ end;
 totalTrainNrmse = mean(trainNrmses)
 maxMeanAbs = mean(meanAbs)
 
-% Generate test points for each pattern
+%% Generate test points for each pattern
 simpleTestData = zeros(pattDim, test_size, nP);
 internalTesting = zeros(test_size, 10, nP);
 
-for iteration = 1:nP
-    wOut = outputWeights{iteration};
-    x = startXs(:, iteration);
-    o = startOs(:, iteration);
+testPatt = 15;
+for iteration = 1:100
+    iteration
+    wOut = outputWeights{testPatt};
+    x = startXs(:, testPatt);
+    o = startOs(:, testPatt);
     
     for i = 1:test_size
-        x = (1-a) * x + a * tanh(w * x + w_back * o + bias);
+        if i <= 250
+            noise = 2 * rand(res_size, 1) - 1;
+        else
+            noise = zeros(res_size, 1);
+        end;
+        x = (1-a) * x + a * tanh(w * x + w_back * o + bias) + noise;
         o = wOut' * x;
         
-        internalTesting(i,:,iteration) = x(1:10)';
-        simpleTestData(:,i,iteration) = o;
+        internalTesting(i,:,testPatt) = x(1:10)';
+        simpleTestData(:,i,testPatt) = o;
     end;
+    
+    figure(iteration);
+    plot(simpleTestData(1:4,:,testPatt)');
+    ylim([-1,1]);
 end;
  
 %% Plots
 if plots == 1
     % The plots of which pattern to show
-    patternNumber = 4;
+    patternNumber = 6;
     
     internalLen = size(internalTraining{patternNumber}, 1);
     thisPatt = patts{patternNumber}';
     pattLen = size(thisPatt, 2);
     
-    figure('units','normalized','position',[.1 .1 .8 .4]);
+    % figure('units','normalized','position',[.1 .1 .8 .4]);
+    figure();
     subplot(3,1,1);
     plot(internalTraining{patternNumber});
     xlabel('Time[time units]');
