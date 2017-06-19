@@ -2,7 +2,8 @@
 
 This project uses machine learning methods, such as *Echo State Networks* (*ESN*)
 and *Conceptors* to generate human motion animations. The used *Motion Capture*
-(*MoCap*) data is taken from the CMU Graphics Lab MoCap Database.
+(*MoCap*) data is taken from the CMU Graphics Lab MoCap Database. The goal of the
+project is to provide a through comparison of the above mentioned techniques.
 
 ## Repo Content
 * src/ - Directory containing the implementation of all the methods.
